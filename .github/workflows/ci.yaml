@@ -3,7 +3,7 @@ name: MLOps Pipeline
 on:
   push:
     branches:
-      - main  # یا master اگر شاخه‌ات master هست
+      - master 
 
 jobs:
   lint:
