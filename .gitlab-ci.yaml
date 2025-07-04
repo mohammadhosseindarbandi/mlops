@@ -1,0 +1,53 @@
+stages:
+  - lint
+  - build
+  - push
+  - deploy
+
+variables:
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  CONTAINER_NAME: mlops-api
+  DOCKER_HOST: tcp://docker:2375/
+  DOCKER_TLS_CERTDIR: ""
+
+default:
+  image: docker:latest
+  services:
+    - docker:dind
+
+before_script:
+  - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin $CI_REGISTRY
+
+lint:
+  stage: lint
+  image: python:3.11
+  script:
+    - pip install flake8
+    - flake8 app/
+
+build:
+  stage: build
+  script:
+    - docker build -t $IMAGE_TAG .
+
+push:
+  stage: push
+  script:
+    - docker push $IMAGE_TAG
+
+deploy:
+  stage: deploy
+  only:
+    - main
+  script:
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $DEPLOY_SERVER_IP >> ~/.ssh/known_hosts
+    - ssh root@$DEPLOY_SERVER_IP "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+        docker pull $IMAGE_TAG &&
+        docker stop $CONTAINER_NAME || true &&
+        docker rm $CONTAINER_NAME || true &&
+        docker run -d -p 80:80 --name $CONTAINER_NAME $IMAGE_TAG
+      "
